@@ -138,7 +138,7 @@ def main():
 
     for fold_idx in range(len(fold_idxes)):
         print('-'*50)
-        print(f"===> Dataset {args.dataset} fold {fold_idx} training...")
+        print(f"===> Dataset {args.dataset} fold {fold_idx+1} training...")
         train_idx, test_idx = fold_idxes[fold_idx]
 
         train_graphs = [graphs[i] for i in train_idx]
@@ -166,8 +166,8 @@ def main():
         test_acc_avg = st.mean(test_acc_per_epoch)
         test_acc_std = st.stdev(test_acc_per_epoch)
 
-        train_acc_statistics.append(train_acc_avg, train_acc_std)
-        test_acc_statistics.append(test_acc_avg, test_acc_std)
+        train_acc_statistics.append([train_acc_avg*100, train_acc_std*100])
+        test_acc_statistics.append([test_acc_avg*100, test_acc_std*100])
 
         train_acc_per_fold.append(train_acc_per_epoch)
         train_loss_per_fold.append(train_loss_per_epoch)
@@ -178,11 +178,12 @@ def main():
     
     max_idx = 0
     for i, (test_acc_avg, _) in enumerate(test_acc_statistics):
-        if test_acc_avg > test_acc_statistics[max_idx]:
+        if test_acc_avg > test_acc_statistics[max_idx][0]:
             max_idx = i
 
     print(f"==> All Done.")
-    print(f"==> Dataset {args.dataset}: train_acc: {train_acc_statistics[max_idx]} test_acc: {test_acc_statistics[max_idx]}")
+    print(f"==> Dataset {args.dataset}: train_acc: {train_acc_statistics[max_idx][0]:.1f} +- {train_acc_statistics[max_idx][1]:.1f} \
+ 		test_acc: {test_acc_statistics[max_idx][0]:.1f} +- {test_acc_statistics[max_idx][1]:.1f}")
     
 
 if __name__ == '__main__':
