@@ -353,9 +353,9 @@ def main():
             train_acc_statistics.append([train_acc_avg*100, train_acc_std*100])
             test_acc_statistics.append([test_acc_avg*100, test_acc_std*100])
 
-            writer.add_scalar(f"{args.model} Train Avg Loss", train_loss_avg, i)
-            writer.add_scalar(f"{args.model} Train Avg Acc", train_acc_avg, i)
-            writer.add_scalar(f"{args.model} Test Avg Acc", test_acc_avg, i)
+            #writer.add_scalars(f"{args.model}_Train_Loss", train_loss_avg, i)
+            writer.add_scalars(f"Acc/Train", {f"{args.model}": train_acc_avg}, i)
+            writer.add_scalars(f"Acc/Test", {f"{args.model}": test_acc_avg}, i)
 
     
         max_idx = 0
