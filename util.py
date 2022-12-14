@@ -141,3 +141,12 @@ def separate_data(graph_list, seed, fold_idx):
     return train_graph_list, test_graph_list
 
 
+def separate_data_allfolds(graph_list, seed):
+    skf = StratifiedKFold(n_splits=10, shuffle = True, random_state = seed)
+
+    labels = [graph.label for graph in graph_list]
+    idx_list = []
+    for idx in skf.split(np.zeros(len(labels)), labels):
+        idx_list.append(idx)
+    
+    return idx_list

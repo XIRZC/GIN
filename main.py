@@ -1,4 +1,5 @@
 import argparse
+import statistics as st
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -7,7 +8,7 @@ import numpy as np
 
 from tqdm import tqdm
 
-from util import load_data, separate_data
+from util import load_data, separate_data, separate_data_allfolds
 from models.graphcnn import GraphCNN
 
 criterion = nn.CrossEntropyLoss()
@@ -129,27 +130,55 @@ def main():
     graphs, num_classes = load_data(args.dataset, args.degree_as_tag)
 
     ##10-fold cross validation. Conduct an experiment on the fold specified by args.fold_idx.
-    train_graphs, test_graphs = separate_data(graphs, args.seed, args.fold_idx)
+    # train_graphs, test_graphs = separate_data(graphs, args.seed, args.fold_idx)
+    fold_idxes = separate_data_allfolds(graphs, args.seed)
 
-    model = GraphCNN(args.num_layers, args.num_mlp_layers, train_graphs[0].node_features.shape[1], args.hidden_dim, num_classes, args.final_dropout, args.learn_eps, args.graph_pooling_type, args.neighbor_pooling_type, device).to(device)
+    train_acc_per_fold, train_loss_per_fold, test_acc_per_fold = [], [], []
+    train_acc_statistics, test_acc_statistics = [], []
 
-    optimizer = optim.Adam(model.parameters(), lr=args.lr)
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.5)
+    for fold_idx in len(fold_idxes):
+        train_idx, test_idx = fold_idxes[fold_idx]
 
+        train_graphs = [graphs[i] for i in train_idx]
+        test_graphs = [graphs[i] for i in test_idx]
 
-    for epoch in range(1, args.epochs + 1):
-        scheduler.step()
+        model = GraphCNN(args.num_layers, args.num_mlp_layers, train_graphs[0].node_features.shape[1], args.hidden_dim, num_classes, args.final_dropout, args.learn_eps, args.graph_pooling_type, args.neighbor_pooling_type, device).to(device)
 
-        avg_loss = train(args, model, device, train_graphs, optimizer, epoch)
-        acc_train, acc_test = test(args, model, device, train_graphs, test_graphs, epoch)
+        optimizer = optim.Adam(model.parameters(), lr=args.lr)
+        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.5)
 
-        if not args.filename == "":
-            with open(args.filename, 'w') as f:
-                f.write("%f %f %f" % (avg_loss, acc_train, acc_test))
-                f.write("\n")
-        print("")
+        train_acc_per_epoch, train_loss_per_epoch, test_acc_per_epoch = [], [], []
+        
+        for epoch in range(1, args.epochs + 1):
+            scheduler.step()
 
-        print(model.eps)
+            train_loss = train(args, model, device, train_graphs, optimizer, epoch)
+            train_acc, test_acc = test(args, model, device, train_graphs, test_graphs, epoch)
+
+            train_acc_per_epoch.append(train_acc)
+            train_loss_per_epoch.append(train_loss)
+            test_acc_per_epoch.append(test_acc)
+        
+        train_acc_avg = st.mean(train_acc_per_epoch)
+        train_acc_std = st.stdev(train_acc_per_epoch)
+        test_acc_avg = st.mean(test_acc_per_epoch)
+        test_acc_std = st.stdev(test_acc_per_epoch)
+
+        train_acc_statistics.append(train_acc_avg, train_acc_std)
+        test_acc_statistics.append(test_acc_avg, test_acc_std)
+
+        train_acc_per_fold.append(train_acc_per_epoch)
+        train_loss_per_fold.append(train_loss_per_epoch)
+        test_acc_per_fold.append(test_acc_per_epoch)
+
+        #print(model.eps)
+    
+    max_idx = 0
+    for i, (test_acc_avg, _) in enumerate(test_acc_statistics):
+        if test_acc_avg > test_acc_statistics[max_idx]:
+            max_idx = i
+
+    print(f"Dataset {args.dataset}: train_acc: {train_acc_statistics[max_idx]} test_acc: {test_acc_statistics[max_idx]}")
     
 
 if __name__ == '__main__':
