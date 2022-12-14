@@ -133,9 +133,6 @@ def main():
                         help='Tensorboard logs output dir (default: output)')
     args = parser.parse_args()
 
-    if args.test:
-        args.epochs = 3
-
     #set up seeds and gpu device
     torch.manual_seed(0)
     np.random.seed(0)    
@@ -282,10 +279,16 @@ def main():
     graphs, num_classes = load_data(args.dataset, args.degree_as_tag)
     fold_idxes = separate_data_allfolds(graphs, args.seed)
 
-    for model in selected_model_list:
-        model_config = model_config_dict[model]
+    model_acc_avg = []
+    for model_name in selected_model_list:
+        setattr(args, 'model', model_name)
+        model_config = model_config_dict[model_name]
         for key, value in model_config.items():
             setattr(args, key, value)
+
+        if args.test:
+            args.epochs = 3
+
         print(f"==> Argparser args: {args}")
 
         # Main training and validation process
@@ -354,16 +357,23 @@ def main():
             writer.add_scalar(f"{args.model} Train Avg Acc", train_acc_avg, i)
             writer.add_scalar(f"{args.model} Test Avg Acc", test_acc_avg, i)
 
-        writer.close()
     
         max_idx = 0
         for i, (test_acc_avg, _) in enumerate(test_acc_statistics):
             if test_acc_avg > test_acc_statistics[max_idx][0]:
                 max_idx = i
 
-        print(f"==> All Done.")
         print(f"==> Dataset {args.dataset} and Model {args.model}: train_acc: {train_acc_statistics[max_idx][0]:.1f} +- {train_acc_statistics[max_idx][1]:.1f} \
  		    test_acc: {test_acc_statistics[max_idx][0]:.1f} +- {test_acc_statistics[max_idx][1]:.1f}")
+        model_acc_avg.append({f"{args.model}_train": train_acc_statistics[max_idx], f"{args.model}_test": test_acc_statistics[max_idx]})
+
+	
+    writer.close()
+    print('*'*100)
+    print(f"=> All Done.")
+    print(f"=> {args.dataset} Summary:")
+    for i, model in enumerate(selected_model_list):
+        print(f"{model}: {model_acc_avg[i]}")
 
 if __name__ == '__main__':
     main()
