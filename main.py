@@ -10,7 +10,6 @@ from tqdm import tqdm
 
 from util import load_data, separate_data, separate_data_allfolds
 from models.graphcnn import GraphCNN
-import logging
 import os
 from tensorboardX import SummaryWriter
 
@@ -274,27 +273,29 @@ def main():
     selected_model_list = ['SUM-MLP-0', 'SUM-MLP-epsilon', 'MEAN-1-LAYER', 'MAX-1-LAYER']
 
     writer = SummaryWriter(os.path.join(output_dir, args.dataset))
+
+    print('-'*100)
+    print(f"=> Dataset {args.dataset} loading...")
+    dataset_config = dataset_config_dict[args.dataset]
+    for key, value in dataset_config.items():
+        setattr(args, key, value)
+    graphs, num_classes = load_data(args.dataset, args.degree_as_tag)
+    fold_idxes = separate_data_allfolds(graphs, args.seed)
+
     for model in selected_model_list:
-        dataset_config = dataset_config_dict[args.dataset]
         model_config = model_config_dict[model]
-        for key, value in dataset_config.items():
-            args[key] = value
         for key, value in model_config.items():
-            args[key] = value
+            setattr(args, key, value)
+        print(f"==> Argparser args: {args}")
 
         # Main training and validation process
-        print('-'*50)
+        print('-'*100)
         print(f"==> Dataset {args.dataset} and Model {args.model} training and validation...")
-        graphs, num_classes = load_data(args.dataset, args.degree_as_tag)
-
-        ##10-fold cross validation. Conduct an experiment on the fold specified by args.fold_idx.
-        # train_graphs, test_graphs = separate_data(graphs, args.seed, args.fold_idx)
-        fold_idxes = separate_data_allfolds(graphs, args.seed)
 
         train_acc_per_fold, train_loss_per_fold, test_acc_per_fold = [], [], []
 
         for fold_idx in range(len(fold_idxes)):
-            print('-'*50)
+            print('-'*100)
             print(f"===> Dataset {args.dataset} and Model {args.model} fold {fold_idx+1} training...")
             train_idx, test_idx = fold_idxes[fold_idx]
 
@@ -365,6 +366,4 @@ def main():
  		    test_acc: {test_acc_statistics[max_idx][0]:.1f} +- {test_acc_statistics[max_idx][1]:.1f}")
 
 if __name__ == '__main__':
-    logging.basicConfig(format='[%(levelname)s] %(asctime)s %(message)s', level=logging.DEBUG,
-                        filemode='a')
     main()
