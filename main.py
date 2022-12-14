@@ -84,30 +84,23 @@ def main():
     # Training settings
     # Note: Hyper-parameters need to be tuned in order to obtain results reported in the paper.
     parser = argparse.ArgumentParser(description='PyTorch graph convolutional neural net for whole-graph classification')
-    parser.add_argument('--dataset', type=str, default="MUTAG",
-                        help='name of dataset (default: MUTAG)')
+    # dataset agnostic args, always fixed
     parser.add_argument('--device', type=int, default=0,
                         help='which gpu to use if any (default: 0)')
-    parser.add_argument('--batch_size', type=int, default=32,
-                        help='input batch size for training (default: 32)')
-    parser.add_argument('--iters_per_epoch', type=int, default=50,
-                        help='number of iterations per each epoch (default: 50)')
-    parser.add_argument('--epochs', type=int, default=350,
-                        help='number of epochs to train (default: 350)')
-    parser.add_argument('--lr', type=float, default=0.01,
-                        help='learning rate (default: 0.01)')
     parser.add_argument('--seed', type=int, default=0,
                         help='random seed for splitting the dataset into 10 (default: 0)')
-    parser.add_argument('--fold_idx', type=int, default=0,
-                        help='the index of fold in 10-fold validation. Should be less then 10.')
-    parser.add_argument('--num_layers', type=int, default=5,
-                        help='number of layers INCLUDING the input one (default: 5)')
-    parser.add_argument('--num_mlp_layers', type=int, default=2,
-                        help='number of layers for MLP EXCLUDING the input one (default: 2). 1 means linear model.')
     parser.add_argument('--hidden_dim', type=int, default=64,
                         help='number of hidden units (default: 64)')
     parser.add_argument('--final_dropout', type=float, default=0.5,
                         help='final layer dropout (default: 0.5)')
+
+    # dataset specific args
+    parser.add_argument('--dataset', type=str, default="MUTAG",
+                        help='name of dataset (default: MUTAG)')
+    # model specific args
+    parser.add_argument('--model', type=str, default="SUM-MLP-0",
+                        help='name of model (default: SUM-MLP-0)')
+    ## model configs args
     parser.add_argument('--graph_pooling_type', type=str, default="sum", choices=["sum", "average"],
                         help='Pooling for over nodes in a graph: sum or average')
     parser.add_argument('--neighbor_pooling_type', type=str, default="sum", choices=["sum", "average", "max"],
@@ -116,8 +109,20 @@ def main():
                                         help='Whether to learn the epsilon weighting for the center nodes. Does not affect training accuracy though.')
     parser.add_argument('--degree_as_tag', action="store_true",
     					help='let the input node features be the degree of nodes (heuristics for unlabeled graph)')
-    parser.add_argument('--filename', type = str, default = "",
-                                        help='output file')
+    parser.add_argument('--num_layers', type=int, default=5,
+                        help='number of layers INCLUDING the input one (default: 5)')
+    parser.add_argument('--num_mlp_layers', type=int, default=2,
+                        help='number of layers for MLP EXCLUDING the input one (default: 2). 1 means linear model.')
+    ## training configs args
+    parser.add_argument('--epochs', type=int, default=350,
+                        help='number of epochs to train (default: 350)')
+    parser.add_argument('--iters_per_epoch', type=int, default=50,
+                        help='number of iterations per each epoch (default: 50)')
+    parser.add_argument('--batch_size', type=int, default=32,
+                        help='input batch size for training (default: 32)')
+    parser.add_argument('--lr', type=float, default=0.01,
+                        help='learning rate (default: 0.01)')
+
     args = parser.parse_args()
 
     #set up seeds and gpu device
@@ -126,6 +131,32 @@ def main():
     device = torch.device("cuda:" + str(args.device)) if torch.cuda.is_available() else torch.device("cpu")
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(0)
+            
+    # dataset config dict by {'$args.dataset': config_dict}
+    dataset_config_dict = {
+        'COLLAB': {},
+        'IMDBBINARY': {},
+        'IMDBMULTI': {},
+        'MUTAG': {},
+        'NCI1': {},
+        'PROTEINS': {},
+        'PTC': {},
+        'REDDITBINARY': {},
+        'REDDITMULTI5K': {},
+    }
+    # model config dict by {'$args.model': model_dict}
+    model_config_dict = {
+        'SUM-MLP-0': {},
+        'SUM-MLP-epsilon': {},
+        'SUM-1-LAYER': {},
+        'MEAN-MLP': {},
+        'MEAN-1-LAYER': {},
+        'MAX-MLP': {},
+        'MAX-1-LAYER': {},
+    }
+
+    dataset_list = ['COLLAB', 'IMDBBINARY', 'IMDBMULTI', 'MUTAG', 'NCI1', 'PROTEINS', 'PTC', 'REDDITBINARY', 'REDDITMULTI5K']
+    model_list = ['SUM-MLP-0', 'SUM-MLP-epsilon', 'SUM-1-LAYER', 'MEAN-MLP', 'MEAN-1-LAYER', 'MAX-MLP', 'MAX-1-LAYER']
 
     graphs, num_classes = load_data(args.dataset, args.degree_as_tag)
 
@@ -134,7 +165,6 @@ def main():
     fold_idxes = separate_data_allfolds(graphs, args.seed)
 
     train_acc_per_fold, train_loss_per_fold, test_acc_per_fold = [], [], []
-    train_acc_statistics, test_acc_statistics = [], []
 
     for fold_idx in range(len(fold_idxes)):
         print('-'*50)
@@ -161,20 +191,35 @@ def main():
             train_loss_per_epoch.append(train_loss)
             test_acc_per_epoch.append(test_acc)
         
-        train_acc_avg = st.mean(train_acc_per_epoch)
-        train_acc_std = st.stdev(train_acc_per_epoch)
-        test_acc_avg = st.mean(test_acc_per_epoch)
-        test_acc_std = st.stdev(test_acc_per_epoch)
-
-        train_acc_statistics.append([train_acc_avg*100, train_acc_std*100])
-        test_acc_statistics.append([test_acc_avg*100, test_acc_std*100])
-
         train_acc_per_fold.append(train_acc_per_epoch)
         train_loss_per_fold.append(train_loss_per_epoch)
         test_acc_per_fold.append(test_acc_per_epoch)
 
         #print(model.eps)
         print()
+
+    train_acc_per_epoch_folds, train_loss_per_epoch_folds, test_acc_per_epoch_folds = [], [], []
+    for i in range(args.epochs):
+        train_acc_this_epoch = []
+        train_loss_this_epoch = []
+        test_acc_this_epoch = []
+        for j in range(len(fold_idxes)):
+            train_acc_this_epoch.append(train_acc_per_fold[j][i])
+            train_loss_this_epoch.append(train_loss_per_fold[j][i])
+            test_acc_this_epoch.append(test_acc_per_fold[j][i])
+        train_acc_per_epoch_folds.append(train_acc_this_epoch)
+        train_loss_per_epoch_folds.append(train_loss_this_epoch)
+        test_acc_per_epoch_folds.append(test_acc_this_epoch)
+
+    train_acc_statistics, test_acc_statistics = [], []
+    for i in range(args.epochs):
+        train_acc_avg = st.mean(train_acc_per_epoch_folds[i])
+        train_acc_std = st.stdev(train_acc_per_epoch_folds[i])
+        test_acc_avg = st.mean(test_acc_per_epoch_folds[i])
+        test_acc_std = st.stdev(test_acc_per_epoch_folds[i])
+
+        train_acc_statistics.append([train_acc_avg*100, train_acc_std*100])
+        test_acc_statistics.append([test_acc_avg*100, test_acc_std*100])
     
     max_idx = 0
     for i, (test_acc_avg, _) in enumerate(test_acc_statistics):
@@ -184,7 +229,6 @@ def main():
     print(f"==> All Done.")
     print(f"==> Dataset {args.dataset}: train_acc: {train_acc_statistics[max_idx][0]:.1f} +- {train_acc_statistics[max_idx][1]:.1f} \
  		test_acc: {test_acc_statistics[max_idx][0]:.1f} +- {test_acc_statistics[max_idx][1]:.1f}")
-    
 
 if __name__ == '__main__':
     main()
