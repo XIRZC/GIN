@@ -84,6 +84,10 @@ def main():
     # Training settings
     # Note: Hyper-parameters need to be tuned in order to obtain results reported in the paper.
     parser = argparse.ArgumentParser(description='PyTorch graph convolutional neural net for whole-graph classification')
+	
+    # test mode
+    parser.add_argument('--test', action="store_true",
+                        help='In test mode, num_epochs is 3')
     # dataset agnostic args, always fixed
     parser.add_argument('--device', type=int, default=0,
                         help='which gpu to use if any (default: 0)')
@@ -124,6 +128,8 @@ def main():
                         help='learning rate (default: 0.01)')
 
     args = parser.parse_args()
+    if args.test:
+        args.epochs = 3
 
     #set up seeds and gpu device
     torch.manual_seed(0)
