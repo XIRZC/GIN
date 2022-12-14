@@ -99,10 +99,6 @@ def main():
                         help='which gpu to use if any (default: 0)')
     parser.add_argument('--seed', type=int, default=0,
                         help='random seed for splitting the dataset into 10 (default: 0)')
-    parser.add_argument('--hidden_dim', type=int, default=64,
-                        help='number of hidden units (default: 64)')
-    parser.add_argument('--final_dropout', type=float, default=0.5,
-                        help='final layer dropout (default: 0.5)')
 
     # dataset specific args
     parser.add_argument('--dataset', type=str, default="MUTAG",
@@ -123,6 +119,10 @@ def main():
                         help='number of layers INCLUDING the input one (default: 5)')
     parser.add_argument('--num_mlp_layers', type=int, default=2,
                         help='number of layers for MLP EXCLUDING the input one (default: 2). 1 means linear model.')
+    parser.add_argument('--hidden_dim', type=int, default=64,
+                        help='number of hidden units (default: 64)')
+    parser.add_argument('--final_dropout', type=float, default=0.5,
+                        help='final layer dropout (default: 0.5)')
     ## training configs args
     parser.add_argument('--epochs', type=int, default=350,
                         help='number of epochs to train (default: 350)')
@@ -144,27 +144,127 @@ def main():
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(0)
             
-    # dataset config dict by {'$args.dataset': config_dict}
+    # dataset config dict by {'$args.dataset': dataset_dict}
     dataset_config_dict = {
-        'COLLAB': {},
-        'IMDBBINARY': {},
-        'IMDBMULTI': {},
-        'MUTAG': {},
-        'NCI1': {},
-        'PROTEINS': {},
-        'PTC': {},
-        'REDDITBINARY': {},
-        'REDDITMULTI5K': {},
+        # 5 Social Network Datasets
+        'COLLAB': {
+            'hidden_dim': 64,               # 64 for social graphs
+            'batch_size': 32,               # 32 or 128
+            'final_dropout': 0.5,           # 0 ~ 0.5
+            'epochs': 350,                  # default 350
+            'graph_pooling_type': 'mean',   # mean for social datasets
+            'degree_as_tag': True           # degree features
+        },
+        'IMDBBINARY': {
+            'hidden_dim': 64,               # 64 for social graphs
+            'batch_size': 32,               # 32 or 128
+            'final_dropout': 0.5,           # 0 ~ 0.5
+            'epochs': 350,                  # default 350
+            'graph_pooling_type': 'mean',   # mean for social datasets
+            'degree_as_tag': True           # degree features
+        },
+        'IMDBMULTI': {
+            'hidden_dim': 64,               # 64 for social graphs
+            'batch_size': 32,               # 32 or 128
+            'final_dropout': 0.5,           # 0 ~ 0.5
+            'epochs': 350,                  # default 350
+            'graph_pooling_type': 'mean',   # mean for social datasets
+            'degree_as_tag': True           # degree features
+        },
+        'REDDITBINARY': {
+            'hidden_dim': 64,               # 64 for social graphs
+            'batch_size': 32,               # 32 or 128
+            'final_dropout': 0.5,           # 0 ~ 0.5
+            'epochs': 350,                  # default 350
+            'graph_pooling_type': 'mean',   # mean for social datasets
+            'degree_as_tag': True           # degree features
+        },
+        'REDDITMULTI5K': {
+            'hidden_dim': 64,               # 64 for social graphs
+            'batch_size': 32,               # 32 or 128
+            'final_dropout': 0.5,           # 0 ~ 0.5
+            'epochs': 350,                  # default 350
+            'graph_pooling_type': 'mean',   # mean for social datasets
+            'degree_as_tag': True           # degree features
+        },
+        # 4 Bioinformatics Datasets
+        'MUTAG': {
+            'hidden_dim': 32,               # 16 or 32 for bioinformatics graphs
+            'batch_size': 32,               # 32 or 128
+            'final_dropout': 0.5,           # 0 ~ 0.5
+            'epochs': 350,                  # default 350
+            'graph_pooling_type': 'sum',    # sum for bioinformatics datasets
+            'degree_as_tag': False          # input categorical features
+        },
+        'PTC': {
+            'hidden_dim': 32,               # 16 or 32 for bioinformatics graphs
+            'batch_size': 32,               # 32 or 128
+            'final_dropout': 0.5,           # 0 ~ 0.5
+            'epochs': 350,                  # default 350
+            'graph_pooling_type': 'sum',    # sum for bioinformatics datasets
+            'degree_as_tag': False          # input categorical features
+        },
+        'NCI1': {
+            'hidden_dim': 32,               # 16 or 32 for bioinformatics graphs
+            'batch_size': 32,               # 32 or 128
+            'final_dropout': 0.5,           # 0 ~ 0.5
+            'epochs': 350,                  # default 350
+            'graph_pooling_type': 'sum',    # sum for bioinformatics datasets
+            'degree_as_tag': False          # input categorical features
+        },
+        'PROTEINS': {
+            'hidden_dim': 32,               # 16 or 32 for bioinformatics graphs
+            'batch_size': 32,               # 32 or 128
+            'final_dropout': 0.5,           # 0 ~ 0.5
+            'epochs': 350,                  # default 350
+            'graph_pooling_type': 'sum',    # sum for bioinformatics datasets
+            'degree_as_tag': False          # input categorical features
+        },
     }
     # model config dict by {'$args.model': model_dict}
     model_config_dict = {
-        'SUM-MLP-0': {},
-        'SUM-MLP-epsilon': {},
-        'SUM-1-LAYER': {},
-        'MEAN-MLP': {},
-        'MEAN-1-LAYER': {},
-        'MAX-MLP': {},
-        'MAX-1-LAYER': {},
+        'SUM-MLP-0': {
+            'neighbor_pooling_type': 'sum',
+            'learn_eps': False,
+            'num_layers': 5,
+            'num_mlp_layers': 2,
+        },
+        'SUM-MLP-epsilon': {
+            'neighbor_pooling_type': 'sum',
+            'learn_eps': True,
+            'num_layers': 5,
+            'num_mlp_layers': 2,
+        },
+        'SUM-1-LAYER': {
+            'neighbor_pooling_type': 'sum',
+            'learn_eps': False,
+            'num_layers': 5,
+            'num_mlp_layers': 1,
+        },
+        'MEAN-MLP': {
+            'neighbor_pooling_type': 'mean',
+            'learn_eps': False,
+            'num_layers': 5,
+            'num_mlp_layers': 2,
+        },
+        'MEAN-1-LAYER': {
+            'neighbor_pooling_type': 'mean',
+            'learn_eps': False,
+            'num_layers': 5,
+            'num_mlp_layers': 1,
+        },
+        'MAX-MLP': {
+            'neighbor_pooling_type': 'max',
+            'learn_eps': False,
+            'num_layers': 5,
+            'num_mlp_layers': 2,
+        },
+        'MAX-1-LAYER': {
+            'neighbor_pooling_type': 'max',
+            'learn_eps': False,
+            'num_layers': 5,
+            'num_mlp_layers': 1,
+        },
     }
 
     dataset_list = ['COLLAB', 'IMDBBINARY', 'IMDBMULTI', 'MUTAG', 'NCI1', 'PROTEINS', 'PTC', 'REDDITBINARY', 'REDDITMULTI5K']
