@@ -10,6 +10,12 @@ from tqdm import tqdm
 
 from util import load_data, separate_data, separate_data_allfolds
 from models.graphcnn import GraphCNN
+import logging
+import os
+from tensorboardX import SummaryWriter
+output_dir = '/home/wx/model/GIN/output'
+
+writer = SummaryWriter(os.path.join(output_dir, 'test'))
 
 criterion = nn.CrossEntropyLoss()
 
@@ -196,7 +202,12 @@ def main():
             train_acc_per_epoch.append(train_acc)
             train_loss_per_epoch.append(train_loss)
             test_acc_per_epoch.append(test_acc)
-        
+
+            writer.add_scalar('loss', train_loss, epoch)
+            writer.add_scalar('train_Accuracy', train_acc, epoch)
+            writer.add_scalar('test_Accuracy', test_acc, epoch)
+        train_writer.close()
+        val_writer.close()
         train_acc_per_fold.append(train_acc_per_epoch)
         train_loss_per_fold.append(train_loss_per_epoch)
         test_acc_per_fold.append(test_acc_per_epoch)
@@ -237,4 +248,6 @@ def main():
  		test_acc: {test_acc_statistics[max_idx][0]:.1f} +- {test_acc_statistics[max_idx][1]:.1f}")
 
 if __name__ == '__main__':
+    logging.basicConfig(format='[%(levelname)s] %(asctime)s %(message)s', level=logging.DEBUG,
+                        filemode='a')
     main()
