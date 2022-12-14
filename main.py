@@ -13,9 +13,6 @@ from models.graphcnn import GraphCNN
 import logging
 import os
 from tensorboardX import SummaryWriter
-output_dir = '/home/wx/model/GIN/output'
-
-writer = SummaryWriter(os.path.join(output_dir, 'test'))
 
 criterion = nn.CrossEntropyLoss()
 
@@ -133,7 +130,10 @@ def main():
     parser.add_argument('--lr', type=float, default=0.01,
                         help='learning rate (default: 0.01)')
 
+    parser.add_argument('--tensorboard', type=str, default='output',
+                        help='Tensorboard logs output dir (default: output)')
     args = parser.parse_args()
+
     if args.test:
         args.epochs = 3
 
@@ -143,6 +143,8 @@ def main():
     device = torch.device("cuda:" + str(args.device)) if torch.cuda.is_available() else torch.device("cpu")
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(0)
+
+    output_dir = args.tensorboard
             
     # dataset config dict by {'$args.dataset': dataset_dict}
     dataset_config_dict = {
@@ -268,84 +270,99 @@ def main():
     }
 
     dataset_list = ['COLLAB', 'IMDBBINARY', 'IMDBMULTI', 'MUTAG', 'NCI1', 'PROTEINS', 'PTC', 'REDDITBINARY', 'REDDITMULTI5K']
-    model_list = ['SUM-MLP-0', 'SUM-MLP-epsilon', 'SUM-1-LAYER', 'MEAN-MLP', 'MEAN-1-LAYER', 'MAX-MLP', 'MAX-1-LAYER']
+    all_model_list = ['SUM-MLP-0', 'SUM-MLP-epsilon', 'SUM-1-LAYER', 'MEAN-MLP', 'MEAN-1-LAYER', 'MAX-MLP', 'MAX-1-LAYER']
+    selected_model_list = ['SUM-MLP-0', 'SUM-MLP-epsilon', 'MEAN-1-LAYER', 'MAX-1-LAYER']
 
-    graphs, num_classes = load_data(args.dataset, args.degree_as_tag)
+    writer = SummaryWriter(os.path.join(output_dir, args.dataset))
+    for model in selected_model_list:
+        dataset_config = dataset_config_dict[args.dataset]
+        model_config = model_config_dict[model]
+        for key, value in dataset_config.items():
+            args[key] = value
+        for key, value in model_config.items():
+            args[key] = value
 
-    ##10-fold cross validation. Conduct an experiment on the fold specified by args.fold_idx.
-    # train_graphs, test_graphs = separate_data(graphs, args.seed, args.fold_idx)
-    fold_idxes = separate_data_allfolds(graphs, args.seed)
-
-    train_acc_per_fold, train_loss_per_fold, test_acc_per_fold = [], [], []
-
-    for fold_idx in range(len(fold_idxes)):
+        # Main training and validation process
         print('-'*50)
-        print(f"===> Dataset {args.dataset} fold {fold_idx+1} training...")
-        train_idx, test_idx = fold_idxes[fold_idx]
+        print(f"==> Dataset {args.dataset} and Model {args.model} training and validation...")
+        graphs, num_classes = load_data(args.dataset, args.degree_as_tag)
 
-        train_graphs = [graphs[i] for i in train_idx]
-        test_graphs = [graphs[i] for i in test_idx]
+        ##10-fold cross validation. Conduct an experiment on the fold specified by args.fold_idx.
+        # train_graphs, test_graphs = separate_data(graphs, args.seed, args.fold_idx)
+        fold_idxes = separate_data_allfolds(graphs, args.seed)
 
-        model = GraphCNN(args.num_layers, args.num_mlp_layers, train_graphs[0].node_features.shape[1], args.hidden_dim, num_classes, args.final_dropout, args.learn_eps, args.graph_pooling_type, args.neighbor_pooling_type, device).to(device)
+        train_acc_per_fold, train_loss_per_fold, test_acc_per_fold = [], [], []
 
-        optimizer = optim.Adam(model.parameters(), lr=args.lr)
-        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.5)
+        for fold_idx in range(len(fold_idxes)):
+            print('-'*50)
+            print(f"===> Dataset {args.dataset} and Model {args.model} fold {fold_idx+1} training...")
+            train_idx, test_idx = fold_idxes[fold_idx]
 
-        train_acc_per_epoch, train_loss_per_epoch, test_acc_per_epoch = [], [], []
-        
-        for epoch in range(1, args.epochs + 1):
-            scheduler.step()
+            train_graphs = [graphs[i] for i in train_idx]
+            test_graphs = [graphs[i] for i in test_idx]
 
-            train_loss = train(args, model, device, train_graphs, optimizer, epoch)
-            train_acc, test_acc = test(args, model, device, train_graphs, test_graphs, epoch)
+            model = GraphCNN(args.num_layers, args.num_mlp_layers, train_graphs[0].node_features.shape[1], args.hidden_dim, num_classes, args.final_dropout, args.learn_eps, args.graph_pooling_type, args.neighbor_pooling_type, device).to(device)
 
-            train_acc_per_epoch.append(train_acc)
-            train_loss_per_epoch.append(train_loss)
-            test_acc_per_epoch.append(test_acc)
+            optimizer = optim.Adam(model.parameters(), lr=args.lr)
+            scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.5)
 
-            writer.add_scalar('loss', train_loss, epoch)
-            writer.add_scalar('train_Accuracy', train_acc, epoch)
-            writer.add_scalar('test_Accuracy', test_acc, epoch)
-        train_writer.close()
-        val_writer.close()
-        train_acc_per_fold.append(train_acc_per_epoch)
-        train_loss_per_fold.append(train_loss_per_epoch)
-        test_acc_per_fold.append(test_acc_per_epoch)
+            train_acc_per_epoch, train_loss_per_epoch, test_acc_per_epoch = [], [], []
 
-        #print(model.eps)
-        print()
+            for epoch in range(1, args.epochs + 1):
+                scheduler.step()
 
-    train_acc_per_epoch_folds, train_loss_per_epoch_folds, test_acc_per_epoch_folds = [], [], []
-    for i in range(args.epochs):
-        train_acc_this_epoch = []
-        train_loss_this_epoch = []
-        test_acc_this_epoch = []
-        for j in range(len(fold_idxes)):
-            train_acc_this_epoch.append(train_acc_per_fold[j][i])
-            train_loss_this_epoch.append(train_loss_per_fold[j][i])
-            test_acc_this_epoch.append(test_acc_per_fold[j][i])
-        train_acc_per_epoch_folds.append(train_acc_this_epoch)
-        train_loss_per_epoch_folds.append(train_loss_this_epoch)
-        test_acc_per_epoch_folds.append(test_acc_this_epoch)
+                train_loss = train(args, model, device, train_graphs, optimizer, epoch)
+                train_acc, test_acc = test(args, model, device, train_graphs, test_graphs, epoch)
 
-    train_acc_statistics, test_acc_statistics = [], []
-    for i in range(args.epochs):
-        train_acc_avg = st.mean(train_acc_per_epoch_folds[i])
-        train_acc_std = st.stdev(train_acc_per_epoch_folds[i])
-        test_acc_avg = st.mean(test_acc_per_epoch_folds[i])
-        test_acc_std = st.stdev(test_acc_per_epoch_folds[i])
+                train_acc_per_epoch.append(train_acc)
+                train_loss_per_epoch.append(train_loss)
+                test_acc_per_epoch.append(test_acc)
 
-        train_acc_statistics.append([train_acc_avg*100, train_acc_std*100])
-        test_acc_statistics.append([test_acc_avg*100, test_acc_std*100])
+            train_acc_per_fold.append(train_acc_per_epoch)
+            train_loss_per_fold.append(train_loss_per_epoch)
+            test_acc_per_fold.append(test_acc_per_epoch)
+
+            #print(model.eps)
+            print()
+
+        train_acc_per_epoch_folds, train_loss_per_epoch_folds, test_acc_per_epoch_folds = [], [], []
+        for i in range(args.epochs):
+            train_acc_this_epoch = []
+            train_loss_this_epoch = []
+            test_acc_this_epoch = []
+            for j in range(len(fold_idxes)):
+                train_acc_this_epoch.append(train_acc_per_fold[j][i])
+                train_loss_this_epoch.append(train_loss_per_fold[j][i])
+                test_acc_this_epoch.append(test_acc_per_fold[j][i])
+            train_acc_per_epoch_folds.append(train_acc_this_epoch)
+            train_loss_per_epoch_folds.append(train_loss_this_epoch)
+            test_acc_per_epoch_folds.append(test_acc_this_epoch)
+
+        train_acc_statistics, test_acc_statistics = [], []
+        for i in range(args.epochs):
+            train_acc_avg = st.mean(train_acc_per_epoch_folds[i])
+            train_acc_std = st.stdev(train_acc_per_epoch_folds[i])
+            train_loss_avg = st.mean(train_acc_per_epoch_folds[i])
+            test_acc_avg = st.mean(test_acc_per_epoch_folds[i])
+            test_acc_std = st.stdev(test_acc_per_epoch_folds[i])
+
+            train_acc_statistics.append([train_acc_avg*100, train_acc_std*100])
+            test_acc_statistics.append([test_acc_avg*100, test_acc_std*100])
+
+            writer.add_scalar(f"{args.model} Train Avg Loss", train_loss_avg, i)
+            writer.add_scalar(f"{args.model} Train Avg Acc", train_acc_avg, i)
+            writer.add_scalar(f"{args.model} Test Avg Acc", test_acc_avg, i)
+
+        writer.close()
     
-    max_idx = 0
-    for i, (test_acc_avg, _) in enumerate(test_acc_statistics):
-        if test_acc_avg > test_acc_statistics[max_idx][0]:
-            max_idx = i
+        max_idx = 0
+        for i, (test_acc_avg, _) in enumerate(test_acc_statistics):
+            if test_acc_avg > test_acc_statistics[max_idx][0]:
+                max_idx = i
 
-    print(f"==> All Done.")
-    print(f"==> Dataset {args.dataset}: train_acc: {train_acc_statistics[max_idx][0]:.1f} +- {train_acc_statistics[max_idx][1]:.1f} \
- 		test_acc: {test_acc_statistics[max_idx][0]:.1f} +- {test_acc_statistics[max_idx][1]:.1f}")
+        print(f"==> All Done.")
+        print(f"==> Dataset {args.dataset} and Model {args.model}: train_acc: {train_acc_statistics[max_idx][0]:.1f} +- {train_acc_statistics[max_idx][1]:.1f} \
+ 		    test_acc: {test_acc_statistics[max_idx][0]:.1f} +- {test_acc_statistics[max_idx][1]:.1f}")
 
 if __name__ == '__main__':
     logging.basicConfig(format='[%(levelname)s] %(asctime)s %(message)s', level=logging.DEBUG,
